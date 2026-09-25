@@ -19,6 +19,25 @@
         /* Header & Search */
         header { position: sticky; top: 0; background: var(--primary); padding: 15px; z-index: 100; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
         .search-bar { width: 100%; padding: 12px; border-radius: 8px; border: none; font-size: 16px; outline: none; }
+        .refresh-btn {
+            background-color: #ffffff;
+            color: var(--primary);
+            border: none;
+            border-radius: 8px;
+            width: 44px;
+            height: 44px;
+            min-width: 44px;
+            font-size: 22px;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .refresh-btn:active {
+            background-color: #e5e7eb;
+        }
         
         /* Tabs */
         .tabs { display: flex; background: var(--card); border-bottom: 2px solid #e5e7eb; }
@@ -57,9 +76,9 @@
 </head>
 <body>
 
-    <header style="display: flex; gap: 10px; align-items: center;">
-        <input type="text" id="searchInput" class="search-bar" placeholder="Search Exact Model Number..." onkeyup="renderList()">
-        <button onclick="fetchLatestData()" style="background: transparent; border: none; color: white; font-size: 24px; cursor: pointer; padding: 0 10px;" title="Refresh Stock">↻</button>
+    <header style="display: flex; gap: 12px; align-items: center;">
+        <input type="text" id="searchInput" class="search-bar" placeholder="Search Exact Model Number..." onkeyup="renderList()" style="flex-grow: 1;">
+        <button class="refresh-btn" onclick="fetchLatestData(true)" id="refreshBtn" title="Refresh Stock">↻</button>
     </header>
 
     <div class="tabs">
@@ -124,25 +143,38 @@
         let currentTab = 'memento'; 
         let pendingAction = '';
 
-        async function fetchLatestData() {
+        async function fetchLatestData(isManual = false) {
+            const container = document.getElementById('inventoryContainer');
+            const refreshBtn = document.getElementById('refreshBtn');
+            
+            // Show a loading indicator if the app is empty or if the user manually clicked refresh
+            if (inventory.length === 0 || isManual) {
+                container.innerHTML = '<div style="text-align: center; padding: 40px; color: #6b7280; font-size: 18px; font-weight: bold;">Loading inventory... ⏳</div>';
+            }
+            
+            // Dim the refresh button to show it is working
+            if (refreshBtn) refreshBtn.style.opacity = '0.5';
+
             try {
-                // Added redirect: 'follow' to ensure Google's servers route the request properly
                 const response = await fetch(API_URL, { redirect: 'follow' });
                 const textData = await response.text(); 
                 
                 try {
-                    // Try to read it as JSON
                     const data = JSON.parse(textData);
                     inventory = data;
                     localStorage.setItem('inventory', JSON.stringify(inventory));
                     renderList();
                 } catch (parseError) {
-                    // If it's not JSON, Google sent an error page. This will show us the error.
                     alert("Google Script Error: " + textData.substring(0, 100));
+                    renderList(); // Fallback to rendering local cache
                 }
             } catch (err) {
-                alert("Connection Error: Could not reach the Google Script. " + err.message);
                 console.log("Offline or fetch failed. Using local cache.");
+                if(isManual) alert("Could not connect to database. Showing saved offline stock.");
+                renderList(); // Fallback to rendering local cache
+            } finally {
+                // Restore the refresh button
+                if (refreshBtn) refreshBtn.style.opacity = '1';
             }
         }
 
