@@ -131,12 +131,22 @@
 
         async function fetchLatestData() {
             try {
-                const response = await fetch(API_URL);
-                const data = await response.json();
-                inventory = data;
-                localStorage.setItem('inventory', JSON.stringify(inventory));
-                renderList();
+                // Added redirect: 'follow' to ensure Google's servers route the request properly
+                const response = await fetch(API_URL, { redirect: 'follow' });
+                const textData = await response.text(); 
+                
+                try {
+                    // Try to read it as JSON
+                    const data = JSON.parse(textData);
+                    inventory = data;
+                    localStorage.setItem('inventory', JSON.stringify(inventory));
+                    renderList();
+                } catch (parseError) {
+                    // If it's not JSON, Google sent an error page. This will show us the error.
+                    alert("Google Script Error: " + textData.substring(0, 100));
+                }
             } catch (err) {
+                alert("Connection Error: Could not reach the Google Script. " + err.message);
                 console.log("Offline or fetch failed. Using local cache.");
             }
         }
