@@ -14,30 +14,15 @@
             --text: #1f2937;
         }
         * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
-        body { margin: 0; background-color: var(--bg); color: var(--text); padding-bottom: 80px; }
+        
+        /* Increased padding-bottom to 140px so the last item clears the buttons */
+        body { margin: 0; background-color: var(--bg); color: var(--text); padding-bottom: 140px; }
         
         /* Header & Search */
-        header { position: sticky; top: 0; background: var(--primary); padding: 15px; z-index: 100; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-        .search-bar { width: 100%; padding: 12px; border-radius: 8px; border: none; font-size: 16px; outline: none; }
-        .refresh-btn {
-            background-color: #ffffff;
-            color: var(--primary);
-            border: none;
-            border-radius: 8px;
-            width: 44px;
-            height: 44px;
-            min-width: 44px;
-            font-size: 22px;
-            font-weight: bold;
-            cursor: pointer;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-        .refresh-btn:active {
-            background-color: #e5e7eb;
-        }
+        header { position: sticky; top: 0; background: var(--primary); padding: 15px; z-index: 100; box-shadow: 0 2px 4px rgba(0,0,0,0.1); display: flex; gap: 12px; align-items: center; }
+        .search-bar { width: 100%; padding: 12px; border-radius: 8px; border: none; font-size: 16px; outline: none; flex-grow: 1; }
+        .refresh-btn { background-color: #ffffff; color: var(--primary); border: none; border-radius: 8px; width: 44px; height: 44px; min-width: 44px; font-size: 22px; font-weight: bold; cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.2); display: flex; align-items: center; justify-content: center; }
+        .refresh-btn:active { background-color: #e5e7eb; }
         
         /* Tabs */
         .tabs { display: flex; background: var(--card); border-bottom: 2px solid #e5e7eb; }
@@ -46,10 +31,8 @@
         
         /* Inventory List */
         .inventory-list { padding: 15px; }
-        .item-card { background: var(--card); padding: 15px; border-radius: 8px; margin-bottom: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); display: flex; justify-content: space-between; align-items: center; }
-        .item-details h3 { margin: 0 0 5px 0; font-size: 22px; font-weight: 800; color: #111827; }
-        .item-details p { margin: 0; color: #4b5563; font-size: 15px; font-weight: 500; }
-        .stock-badge { background: #1f2937; color: #ffffff; padding: 8px 16px; border-radius: 8px; font-weight: 900; font-size: 20px; box-shadow: 0 2px 5px rgba(0,0,0,0.2); }
+        .item-card { background: var(--card); padding: 15px; border-radius: 8px; margin-bottom: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); display: block; }
+        .stock-badge { background: #1f2937; color: #ffffff; padding: 6px 14px; border-radius: 8px; font-weight: 900; font-size: 18px; box-shadow: 0 2px 5px rgba(0,0,0,0.2); }
         
         /* Left-Aligned Floating Action Buttons */
         .fab-container { position: fixed; left: 20px; bottom: 30px; display: flex; flex-direction: column; gap: 15px; z-index: 90; }
@@ -69,15 +52,12 @@
         .btn { padding: 10px 20px; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; }
         .btn-cancel { background: #e5e7eb; color: #374151; }
         .btn-confirm { background: var(--primary); color: white; }
-
-        /* Sync Status indicator */
-        #sync-status { text-align: center; padding: 5px; font-size: 12px; background: #fef08a; color: #854d0e; display: none; }
     </style>
 </head>
 <body>
 
-    <header style="display: flex; gap: 12px; align-items: center;">
-        <input type="text" id="searchInput" class="search-bar" placeholder="Search Exact Model Number..." onkeyup="renderList()" style="flex-grow: 1;">
+    <header>
+        <input type="text" id="searchInput" class="search-bar" placeholder="Search Exact Model Number..." onkeyup="renderList()">
         <button class="refresh-btn" onclick="fetchLatestData(true)" id="refreshBtn" title="Refresh Stock">↻</button>
     </header>
 
@@ -86,8 +66,6 @@
         <div class="tab" onclick="switchTab('trophy')" id="tab-trophy">Trophies</div>
     </div>
     
-    <div id="sync-status">Syncing background changes...</div>
-
     <div class="inventory-list" id="inventoryContainer">
         <!-- JS will render items here -->
     </div>
@@ -98,7 +76,7 @@
         <button class="fab fab-sell" onclick="openActionModal('STOCK_OUT')"><span>-</span>Sell</button>
     </div>
 
-    <!-- Action Modal (Input Data) -->
+    <!-- Action Modal -->
     <div class="modal-overlay" id="actionModal">
         <div class="modal">
             <h2 id="modalTitle">Update Stock</h2>
@@ -141,18 +119,29 @@
         let inventory = JSON.parse(localStorage.getItem('inventory')) || [];
         let syncQueue = JSON.parse(localStorage.getItem('syncQueue')) || [];
         let currentTab = 'memento'; 
-        let pendingAction = '';
+        let pendingAction = ''; 
+
+        // Initialize App instantly 
+        document.addEventListener('DOMContentLoaded', () => {
+            renderList();
+            fetchLatestData(inventory.length === 0);
+        });
+
+        // Auto-Refresh when returning to the app
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible') {
+                fetchLatestData(false);
+            }
+        });
 
         async function fetchLatestData(isManual = false) {
             const container = document.getElementById('inventoryContainer');
             const refreshBtn = document.getElementById('refreshBtn');
             
-            // Show a loading indicator if the app is empty or if the user manually clicked refresh
             if (inventory.length === 0 || isManual) {
                 container.innerHTML = '<div style="text-align: center; padding: 40px; color: #6b7280; font-size: 18px; font-weight: bold;">Loading inventory... ⏳</div>';
             }
             
-            // Dim the refresh button to show it is working
             if (refreshBtn) refreshBtn.style.opacity = '0.5';
 
             try {
@@ -166,15 +155,15 @@
                     renderList();
                 } catch (parseError) {
                     alert("Google Script Error: " + textData.substring(0, 100));
-                    renderList(); // Fallback to rendering local cache
+                    renderList(); 
                 }
             } catch (err) {
                 console.log("Offline or fetch failed. Using local cache.");
                 if(isManual) alert("Could not connect to database. Showing saved offline stock.");
-                renderList(); // Fallback to rendering local cache
+                renderList(); 
             } finally {
-                // Restore the refresh button
                 if (refreshBtn) refreshBtn.style.opacity = '1';
+                processSyncQueue(); // Attempt to process any leftover offline queue items
             }
         }
 
@@ -192,7 +181,7 @@
 
             let filtered = inventory.filter(item => {
                 const firstDigit = String(item.Model_Number).charAt(0);
-                const isMemento = firstDigit === '2' || firstDigit === '3' || firstDigit === '4' || firstDigit === '5' || firstDigit === '6' || firstDigit === '7' || firstDigit === '8' || firstDigit === '9'; 
+                const isMemento = ['2','3','4','5','6','7','8','9'].includes(firstDigit);
                 const isTrophy = firstDigit === '1'; 
 
                 const matchesTab = (currentTab === 'memento' && isMemento) || (currentTab === 'trophy' && isTrophy);
@@ -202,26 +191,51 @@
             });
 
             if(filtered.length === 0) {
-                container.innerHTML = '<p style="text-align:center; color:#6b7280;">No items found.</p>';
+                container.innerHTML = '<p style="text-align:center; color:#6b7280; padding: 20px;">No items found.</p>';
                 return;
             }
 
-            let htmlString = '';
+            // Group filtered items by Model_Number
+            const grouped = {};
             filtered.forEach(item => {
-                const hasSize = (item.Size && item.Size !== 'NONE' && item.Size !== 'null' && item.Size !== '');
-                const titleDisplay = hasSize ? `${item.Model_Number}-${item.Size}` : item.Model_Number;
-                const sizeDisplay = hasSize ? `Size: ${item.Size}` : 'Standard';
+                const modelStr = String(item.Model_Number);
+                if (!grouped[modelStr]) {
+                    grouped[modelStr] = [];
+                }
+                grouped[modelStr].push(item);
+            });
+
+            let htmlString = '';
+            
+            for (const model in grouped) {
+                let sizesHtml = '';
                 
+                // Build the inner rows for each size
+                grouped[model].forEach(item => {
+                    const hasSize = (item.Size && item.Size !== 'NONE' && item.Size !== 'null' && item.Size !== '');
+                    const sizeDisplay = hasSize ? `Size: ${item.Size}` : 'Standard';
+                    
+                    sizesHtml += `
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 12px;">
+                            <p style="margin: 0; color: #374151; font-size: 16px; font-weight: 600;">
+                                ${sizeDisplay} <span style="color: #9ca3af; font-weight: 400;">| ₹${item.Price}</span>
+                            </p>
+                            <div class="stock-badge">${item.Stock_Quantity}</div>
+                        </div>
+                    `;
+                });
+
+                // Wrap sizes inside a master Model Card
                 htmlString += `
                     <div class="item-card">
-                        <div class="item-details">
-                            <h3>${titleDisplay}</h3>
-                            <p>${sizeDisplay} | ₹${item.Price}</p>
+                        <div style="border-bottom: 1px solid #e5e7eb; padding-bottom: 8px;">
+                            <h3 style="margin: 0; font-size: 24px; font-weight: 900; color: #111827;">${model}</h3>
                         </div>
-                        <div class="stock-badge">${item.Stock_Quantity}</div>
+                        ${sizesHtml}
                     </div>
                 `;
-            });
+            }
+            
             container.innerHTML = htmlString;
         }
 
@@ -302,15 +316,7 @@
         }
 
         async function processSyncQueue() {
-            const statusIndicator = document.getElementById('sync-status');
-            
-            if (syncQueue.length === 0) {
-                statusIndicator.style.display = 'none';
-                return;
-            }
-
-            statusIndicator.style.display = 'block';
-            statusIndicator.innerText = `Syncing ${syncQueue.length} changes to database...`;
+            if (syncQueue.length === 0) return;
 
             while (syncQueue.length > 0) {
                 const currentTask = syncQueue[0];
@@ -329,14 +335,12 @@
                         throw new Error(result.message);
                     }
                 } catch (error) {
-                    console.log("Sync paused. Device might be offline. Will retry automatically.");
-                    statusIndicator.innerText = `Offline. ${syncQueue.length} changes waiting to sync.`;
+                    console.log("Offline. Changes waiting to sync.");
                     break; 
                 }
             }
 
             if (syncQueue.length === 0) {
-                statusIndicator.style.display = 'none';
                 fetchLatestData(); 
             }
         }
