@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Stock Manager</title>
+    <style>
+        :root {
+            --primary: #2563eb;
+            --success: #16a34a;
+            --danger: #dc2626;
+            --bg: #f3f4f6;
+            --card: #ffffff;
+            --text: #1f2937;
+        }
+        * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+        body { margin: 0; background-color: var(--bg); color: var(--text); padding-bottom: 80px; }
+        
+        /* Header & Search */
+        header { position: sticky; top: 0; background: var(--primary); padding: 15px; z-index: 100; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .search-bar { width: 100%; padding: 12px; border-radius: 8px; border: none; font-size: 16px; outline: none; }
+        
+        /* Tabs */
+        .tabs { display: flex; background: var(--card); border-bottom: 2px solid #e5e7eb; }
+        .tab { flex: 1; text-align: center; padding: 15px; font-weight: 600; color: #6b7280; cursor: pointer; }
+        .tab.active { color: var(--primary); border-bottom: 3px solid var(--primary); }
+        
+        /* Inventory List */
+        .inventory-list { padding: 15px; }
+        .item-card { background: var(--card); padding: 15px; border-radius: 8px; margin-bottom: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); display: flex; justify-content: space-between; align-items: center; }
+        .item-details h3 { margin: 0 0 5px 0; font-size: 22px; font-weight: 800; color: #111827; }
+        .item-details p { margin: 0; color: #4b5563; font-size: 15px; font-weight: 500; }
+        .stock-badge { background: #1f2937; color: #ffffff; padding: 8px 16px; border-radius: 8px; font-weight: 900; font-size: 20px; box-shadow: 0 2px 5px rgba(0,0,0,0.2); }
+        
+        /* Left-Aligned Floating Action Buttons */
+        .fab-container { position: fixed; left: 20px; bottom: 30px; display: flex; flex-direction: column; gap: 15px; z-index: 90; }
+        .fab { width: 60px; height: 60px; border-radius: 50%; color: white; border: none; font-size: 12px; font-weight: bold; box-shadow: 0 4px 6px rgba(0,0,0,0.3); cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+        .fab-add { background-color: var(--success); }
+        .fab-sell { background-color: var(--danger); }
+        .fab span { font-size: 24px; margin-bottom: 2px; }
+
+        /* Modals */
+        .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 200; align-items: center; justify-content: center; }
+        .modal { background: var(--card); padding: 20px; border-radius: 12px; width: 90%; max-width: 400px; }
+        .modal h2 { margin-top: 0; }
+        .form-group { margin-bottom: 15px; }
+        .form-group label { display: block; margin-bottom: 5px; font-weight: bold; }
+        .form-group input, .form-group select { width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 6px; font-size: 16px; }
+        .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
+        .btn { padding: 10px 20px; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; }
+        .btn-cancel { background: #e5e7eb; color: #374151; }
+        .btn-confirm { background: var(--primary); color: white; }
+
+        /* Sync Status indicator */
+        #sync-status { text-align: center; padding: 5px; font-size: 12px; background: #fef08a; color: #854d0e; display: none; }
+    </style>
+</head>
+<body>
+
+    <header>
+        <input type="text" id="searchInput" class="search-bar" placeholder="Search Exact Model Number..." onkeyup="renderList()">
+    </header>
+
+    <div class="tabs">
+        <div class="tab active" onclick="switchTab('memento')" id="tab-memento">Mementos</div>
+        <div class="tab" onclick="switchTab('trophy')" id="tab-trophy">Trophies</div>
+    </div>
+    
+    <div id="sync-status">Syncing background changes...</div>
+
+    <div class="inventory-list" id="inventoryContainer">
+        <!-- JS will render items here -->
+    </div>
+
+    <!-- Left Aligned FABs -->
+    <div class="fab-container">
+        <button class="fab fab-add" onclick="openActionModal('STOCK_IN')"><span>+</span>Add</button>
+        <button class="fab fab-sell" onclick="openActionModal('STOCK_OUT')"><span>-</span>Sell</button>
+    </div>
+
+    <!-- Action Modal (Input Data) -->
+    <div class="modal-overlay" id="actionModal">
+        <div class="modal">
+            <h2 id="modalTitle">Update Stock</h2>
+            <div class="form-group">
+                <label>Model Number</label>
+                <input type="text" id="actionModel" placeholder="Type model to find sizes..." onkeyup="populateSizes()">
+            </div>
+            <div class="form-group">
+                <label>Size</label>
+                <select id="actionSize">
+                    <option value="">Select a model first...</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Quantity</label>
+                <input type="number" id="actionQty" placeholder="e.g., 50" min="1">
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-cancel" onclick="closeModals()">Cancel</button>
+                <button class="btn btn-confirm" onclick="triggerConfirmation()">Review</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Confirmation Modal -->
+    <div class="modal-overlay" id="confirmModal">
+        <div class="modal">
+            <h2>Confirm Action</h2>
+            <p id="confirmMessage">Are you sure?</p>
+            <div class="modal-actions">
+                <button class="btn btn-cancel" onclick="document.getElementById('confirmModal').style.display='none'">Back</button>
+                <button class="btn btn-confirm" onclick="submitTransaction()" id="finalConfirmBtn">Confirm</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = "https://script.google.com/macros/s/AKfycbyheuoWPp3_EMf26H8wrDGWEM0HRWN3kAefo_iB3WeKRS429BxQWuX2qVVGNY66Fz79QQ/exec";
+        
+        let inventory = JSON.parse(localStorage.getItem('inventory')) || [];
+        let syncQueue = JSON.parse(localStorage.getItem('syncQueue')) || [];
+        let currentTab = 'memento'; 
+        let pendingAction = ''; 
+
+        window.onload = () => {
+            renderList();
+            fetchLatestData();
+            setInterval(processSyncQueue, 5000); 
+        };
+
+        async function fetchLatestData() {
+            try {
+                const response = await fetch(API_URL);
+                const data = await response.json();
+                inventory = data;
+                localStorage.setItem('inventory', JSON.stringify(inventory));
+                renderList();
+            } catch (err) {
+                console.log("Offline or fetch failed. Using local cache.");
+            }
+        }
+
+        function switchTab(tab) {
+            currentTab = tab;
+            document.getElementById('tab-memento').classList.toggle('active', tab === 'memento');
+            document.getElementById('tab-trophy').classList.toggle('active', tab === 'trophy');
+            renderList();
+        }
+
+        function renderList() {
+            const container = document.getElementById('inventoryContainer');
+            const searchTerm = document.getElementById('searchInput').value.trim().toLowerCase();
+            container.innerHTML = '';
+
+            let filtered = inventory.filter(item => {
+                const firstDigit = String(item.Model_Number).charAt(0);
+                const isMemento = firstDigit === '2' || firstDigit === '3' || firstDigit === '4' || firstDigit === '5' || firstDigit === '6' || firstDigit === '7' || firstDigit === '8' || firstDigit === '9'; 
+                const isTrophy = firstDigit === '1'; 
+
+                const matchesTab = (currentTab === 'memento' && isMemento) || (currentTab === 'trophy' && isTrophy);
+                const matchesSearch = String(item.Model_Number).toLowerCase().includes(searchTerm);
+                
+                return matchesTab && matchesSearch;
+            });
+
+            if(filtered.length === 0) {
+                container.innerHTML = '<p style="text-align:center; color:#6b7280;">No items found.</p>';
+                return;
+            }
+
+            let htmlString = '';
+            filtered.forEach(item => {
+                const hasSize = (item.Size && item.Size !== 'NONE' && item.Size !== 'null' && item.Size !== '');
+                const titleDisplay = hasSize ? `${item.Model_Number}-${item.Size}` : item.Model_Number;
+                const sizeDisplay = hasSize ? `Size: ${item.Size}` : 'Standard';
+                
+                htmlString += `
+                    <div class="item-card">
+                        <div class="item-details">
+                            <h3>${titleDisplay}</h3>
+                            <p>${sizeDisplay} | ₹${item.Price}</p>
+                        </div>
+                        <div class="stock-badge">${item.Stock_Quantity}</div>
+                    </div>
+                `;
+            });
+            container.innerHTML = htmlString;
+        }
+
+        function openActionModal(actionType) {
+            pendingAction = actionType;
+            document.getElementById('modalTitle').innerText = actionType === 'STOCK_IN' ? 'Add Stock (Incoming)' : 'Sell Stock (Outgoing)';
+            
+            document.getElementById('actionModel').value = '';
+            document.getElementById('actionSize').innerHTML = '<option value="">Type model to find sizes...</option>';
+            document.getElementById('actionQty').value = '';
+            
+            document.getElementById('actionModal').style.display = 'flex';
+        }
+
+        function closeModals() {
+            document.getElementById('actionModal').style.display = 'none';
+            document.getElementById('confirmModal').style.display = 'none';
+        }
+
+        function populateSizes() {
+            const modelInput = document.getElementById('actionModel').value.trim();
+            const sizeDropdown = document.getElementById('actionSize');
+            sizeDropdown.innerHTML = ''; 
+
+            const matches = inventory.filter(item => String(item.Model_Number) === modelInput);
+            
+            if (matches.length === 0) {
+                sizeDropdown.innerHTML = '<option value="">No exact model match found...</option>';
+                return;
+            }
+
+            matches.forEach(item => {
+                let option = document.createElement('option');
+                option.value = item.Item_Code;
+                option.text = (item.Size && item.Size !== 'NONE' && item.Size !== 'null' && item.Size !== '') ? `Size: ${item.Size} (Stock: ${item.Stock_Quantity})` : `Standard (Stock: ${item.Stock_Quantity})`;
+                sizeDropdown.appendChild(option);
+            });
+        }
+
+        function triggerConfirmation() {
+            const itemCode = document.getElementById('actionSize').value;
+            const qty = parseInt(document.getElementById('actionQty').value);
+            
+            if (!itemCode || !qty || qty <= 0 || isNaN(qty)) {
+                alert("Please select a valid model/size and enter a quantity greater than 0.");
+                return;
+            }
+
+            const actionText = pendingAction === 'STOCK_IN' ? 'ADDING' : 'SELLING';
+            document.getElementById('confirmMessage').innerHTML = `Are you sure you are <b>${actionText} ${qty} units</b> of Item Code: <b>${itemCode}</b>?`;
+            
+            document.getElementById('confirmModal').style.display = 'flex';
+        }
+
+        function submitTransaction() {
+            const itemCode = document.getElementById('actionSize').value;
+            const qty = parseInt(document.getElementById('actionQty').value);
+            
+            const targetItem = inventory.find(item => item.Item_Code === itemCode);
+            if (targetItem) {
+                if (pendingAction === 'STOCK_IN') targetItem.Stock_Quantity = parseInt(targetItem.Stock_Quantity) + qty;
+                if (pendingAction === 'STOCK_OUT') targetItem.Stock_Quantity = parseInt(targetItem.Stock_Quantity) - qty;
+                localStorage.setItem('inventory', JSON.stringify(inventory));
+                renderList();
+            }
+
+            const payload = {
+                timestamp: new Date().toISOString(),
+                itemCode: itemCode,
+                action: pendingAction,
+                qty: qty
+            };
+            syncQueue.push(payload);
+            localStorage.setItem('syncQueue', JSON.stringify(syncQueue));
+
+            closeModals();
+            processSyncQueue(); 
+        }
+
+        async function processSyncQueue() {
+            const statusIndicator = document.getElementById('sync-status');
+            
+            if (syncQueue.length === 0) {
+                statusIndicator.style.display = 'none';
+                return;
+            }
+
+            statusIndicator.style.display = 'block';
+            statusIndicator.innerText = `Syncing ${syncQueue.length} changes to database...`;
+
+            while (syncQueue.length > 0) {
+                const currentTask = syncQueue[0];
+                try {
+                    const response = await fetch(API_URL, {
+                        method: 'POST',
+                        body: JSON.stringify(currentTask)
+                    });
+                    
+                    const result = await response.json();
+                    
+                    if (result.status === 'success') {
+                        syncQueue.shift(); 
+                        localStorage.setItem('syncQueue', JSON.stringify(syncQueue));
+                    } else {
+                        throw new Error(result.message);
+                    }
+                } catch (error) {
+                    console.log("Sync paused. Device might be offline. Will retry automatically.");
+                    statusIndicator.innerText = `Offline. ${syncQueue.length} changes waiting to sync.`;
+                    break; 
+                }
+            }
+
+            if (syncQueue.length === 0) {
+                statusIndicator.style.display = 'none';
+                fetchLatestData(); 
+            }
+        }
+    </script>
+</body>
+</html>
